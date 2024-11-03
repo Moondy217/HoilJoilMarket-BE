@@ -18,7 +18,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-4d9t^$c#jsf#ca*1l&xvo-jiw%zume&78t8ni4$#0x%-p!ot)^'
 
 
-ALLOWED_HOSTS = ['localhost']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 DEBUG = False
 
 # Application definition
@@ -82,12 +82,13 @@ DATABASES = {
     'default': {
         'ENGINE': 'mysql.connector.django', # mariadb로 연결되는 오류 발생 -> 수정
         'NAME': 'portermarket',
-        'USER': 'root',
-        'PASSWORD': '1234',
-        'HOST': '127.0.0.1',  # MySQL 서버 주소
-        'PORT': '3307',  # MySQL 포트 번호
+        'USER': 'portermarket_user',
+        'PASSWORD': 'portermarket~!@#?',
+        'HOST': '220.118.124.21',  # MySQL 서버 주소
+        'PORT': '6875',  # MySQL 포트 번호
     }
 }
+
 
 AUTH_PASSWORD_VALIDATORS = [
     {

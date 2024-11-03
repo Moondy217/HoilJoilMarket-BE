@@ -127,148 +127,27 @@ situation = pd.read_csv(os.path.join(CSV_DIR, 'situation.csv'), encoding='utf-8-
 situationCategory = pd.read_csv(os.path.join(CSV_DIR, 'situationCategory.csv'), encoding='utf-8-sig')
 situationKeyword = pd.read_csv(os.path.join(CSV_DIR, 'situationKeyword.csv'), encoding='utf-8-sig')
 
+# 데이터 그룹화 및 병합
 situationKeyword = situationKeyword.groupby('situationKey')['situationKeyword'].apply(list).reset_index()
-# 내부 조인 수행 (situationCateKey 기준)
 situation = pd.merge(situation, situationCategory, on='situationCateKey', how='inner')
 situation = pd.merge(situation, situationKeyword, on='situationKey', how='inner')
 
 goodsKeyword = goodsKeyword.groupby('ASIN')['goodsKeyword'].apply(list).reset_index()
 goods = goods.merge(goodsKeyword, on='ASIN', how='inner')
 
-# '탕비실'에 해당하는 행 필터링
+# '탕비실' 관련 데이터 필터링
 pantry_situation = situation[situation['situationCategory1'] == '탕비실']
 pantry_goods = goods[goods['category1'] == '식음료']
-
-# 'pantry_df'에 해당하는 행 제거
 situation = situation.drop(pantry_situation.index)
 
-# 안전한 키워드 처리 함수
+# 안전한 키워드 처리 함수 (문자열을 안전하게 평가하여 변환)
 def safe_literal_eval(value):
     try:
         return ' '.join(ast.literal_eval(value)) if pd.notna(value) else ''
     except (ValueError, SyntaxError):
         return str(value)
 
-
-
-# 섹션 정의와 상황 키 매핑
-SECTIONS = [
-    {"name": "일반 섹션 1", "categories": ['사무용품', '사무실 꾸미기', '직장 생활'], "situationKeys": [17, 18, 19]},
-    {"name": "일반 섹션 2", "categories": ['사무용품', '사무실 꾸미기', '직장 생활'], "situationKeys": [20, 21, 22]},
-    {"name": "탕비실 섹션 3", "categories": ['식음료', '탕비실'], "situationKeys": [1, 2, 3]},
-    {"name": "탕비실 섹션 4", "categories": ['식음료', '탕비실'], "situationKeys": [4, 5, 6]}
-]
-
-def situation_recommendation(situation, goods):
-    random_situations = situation.sample(n=min(2, len(situation)))
-    recommendations = {}
-
-    for idx, row in random_situations.iterrows():
-        headline1, headline2 = row['headline1'], row['headline2']
-        situation_keywords = ' '.join(row['situationKeyword'])
-
-        # 복사본 생성 후 수정
-        goods_copy = goods.copy()
-        goods_copy.loc[:, 'keyword_str'] = goods_copy['goodsKeyword'].apply(safe_literal_eval)
-
-        tfidf = TfidfVectorizer()
-        situation_matrix = tfidf.fit_transform([situation_keywords])
-        goods_matrix = tfidf.transform(goods_copy['keyword_str'])
-        similarity_scores = cosine_similarity(goods_matrix, situation_matrix)
-
-        goods_copy.loc[:, 'similarity'] = similarity_scores.flatten()
-
-        top_50_goods = goods_copy.sort_values(by='similarity', ascending=False).head(50)
-
-        top_categories = (
-            top_50_goods.groupby(['category1', 'category2', 'category3'])
-            .size()
-            .reset_index(name='count')
-            .sort_values(by='count', ascending=False)
-            .head(6)
-        )
-
-        category_recommendations = []
-        for _, category_row in top_categories.iterrows():
-            category1, category2, category3 = category_row[['category1', 'category2', 'category3']]
-            filtered_goods = top_50_goods[
-                (top_50_goods['category1'] == category1) &
-                (top_50_goods['category2'] == category2) &
-                (top_50_goods['category3'] == category3)
-            ].sort_values(by='similarity', ascending=False).head(15)
-
-            sampled_goods = filtered_goods.sample(n=min(2, len(filtered_goods)), random_state=None)
-            category_recommendations.append(sampled_goods)
-
-        all_recommendations = pd.concat(category_recommendations, ignore_index=True)
-
-        if len(all_recommendations) < 12:
-            remaining_goods = top_50_goods[~top_50_goods.index.isin(all_recommendations.index)]
-            additional_goods = remaining_goods.head(12 - len(all_recommendations))
-            all_recommendations = pd.concat([all_recommendations, additional_goods], ignore_index=True)
-
-        final_recommendations = all_recommendations.sort_values(by='similarity', ascending=False).head(12)
-        recommendations[f"{headline1}, {headline2}"] = final_recommendations.to_dict('records')
-
-    return recommendations
-
-
-def pantry_situation_recommendation(pantry_situation, pantry_goods):
-    random_situations = pantry_situation.sample(n=min(2, len(pantry_situation)))
-    recommendations = {}
-
-    for idx, row in random_situations.iterrows():
-        headline1, headline2 = row['headline1'], row['headline2']
-        situation_keywords = ' '.join(row['situationKeyword'])
-
-        # 복사본을 생성하여 값 할당
-        pantry_goods_copy = pantry_goods.copy()
-        pantry_goods_copy.loc[:, 'keyword_str'] = pantry_goods_copy['goodsKeyword'].apply(safe_literal_eval)
-
-        tfidf = TfidfVectorizer()
-        situation_matrix = tfidf.fit_transform([situation_keywords])
-        goods_matrix = tfidf.transform(pantry_goods_copy['keyword_str'])
-        similarity_scores = cosine_similarity(goods_matrix, situation_matrix)
-
-        pantry_goods_copy.loc[:, 'similarity'] = similarity_scores.flatten()
-
-        top_50_goods = pantry_goods_copy.sort_values(by='similarity', ascending=False).head(50)
-
-        # 나머지 로직은 동일하게 유지
-        top_categories = (
-            top_50_goods.groupby(['category1', 'category2', 'category3'])
-            .size()
-            .reset_index(name='count')
-            .sort_values(by='count', ascending=False)
-            .head(6)
-        )
-
-        category_recommendations = []
-        for _, category_row in top_categories.iterrows():
-            category1, category2, category3 = category_row[['category1', 'category2', 'category3']]
-            filtered_goods = top_50_goods[
-                (top_50_goods['category1'] == category1) &
-                (top_50_goods['category2'] == category2) &
-                (top_50_goods['category3'] == category3)
-            ].sort_values(by='similarity', ascending=False).head(15)
-
-            sampled_goods = filtered_goods.sample(n=min(2, len(filtered_goods)), random_state=None)
-            category_recommendations.append(sampled_goods)
-
-        all_recommendations = pd.concat(category_recommendations, ignore_index=True)
-
-        if len(all_recommendations) < 12:
-            remaining_goods = top_50_goods[~top_50_goods.index.isin(all_recommendations.index)]
-            additional_goods = remaining_goods.head(12 - len(all_recommendations))
-            all_recommendations = pd.concat([all_recommendations, additional_goods], ignore_index=True)
-
-        final_recommendations = all_recommendations.sort_values(by='similarity', ascending=False).head(12)
-        recommendations[f"{headline1}, {headline2}"] = final_recommendations.to_dict('records')
-
-    return recommendations
-
-
-# goodsKey를 기준으로 중복된 상품 제거
+# 중복된 상품 제거 함수 (goodsKey 기준으로 중복 제거)
 def remove_duplicates(goods_list):
     seen = set()
     unique_goods = []
@@ -278,13 +157,11 @@ def remove_duplicates(goods_list):
             seen.add(item["goodsKey"])
     return unique_goods
 
-# 필요한 필드만 추출하여 최종 데이터를 구성
+# 추천 데이터를 포맷팅하는 함수 (필요한 필드만 추출)
 def format_recommendation_data(recommendation_data):
     formatted_data = []
     for headline, goods_list in recommendation_data.items():
-        # 중복 상품 제거
         unique_goods_list = remove_duplicates(goods_list)
-
         section = headline.split(", ")[0]  # 첫 번째 헤드라인을 섹션으로 사용
         formatted_data.append({
             "section": section,
@@ -303,21 +180,132 @@ def format_recommendation_data(recommendation_data):
         })
     return formatted_data
 
-# 추천 API
+# 일반 상황에 대한 추천 함수
+def situation_recommendation(situation, goods):
+    random_situations = situation.sample(n=min(2, len(situation)))  # 무작위로 2개의 상황 샘플링
+    recommendations = {}
+
+    for idx, row in random_situations.iterrows():
+        headline1, headline2 = row['headline1'], row['headline2']
+        situation_keywords = ' '.join(row['situationKeyword'])
+
+        # 상품 키워드 문자열로 변환
+        goods_copy = goods.copy()
+        goods_copy['keyword_str'] = goods_copy['goodsKeyword'].apply(safe_literal_eval)
+
+        # TF-IDF 벡터화 및 유사도 계산
+        tfidf = TfidfVectorizer()
+        situation_matrix = tfidf.fit_transform([situation_keywords])
+        goods_matrix = tfidf.transform(goods_copy['keyword_str'])
+        similarity_scores = cosine_similarity(goods_matrix, situation_matrix).flatten()
+        goods_copy['similarity'] = similarity_scores
+
+        # 상위 50개 유사 상품 선택
+        top_50_goods = goods_copy.sort_values(by='similarity', ascending=False).head(50)
+
+        # 상위 카테고리 6개 선택
+        top_categories = (
+            top_50_goods.groupby(['category1', 'category2', 'category3'])
+            .size()
+            .reset_index(name='count')
+            .sort_values(by='count', ascending=False)
+            .head(6)
+        )
+
+        category_recommendations = []
+        for _, category_row in top_categories.iterrows():
+            category1, category2, category3 = category_row[['category1', 'category2', 'category3']]
+            filtered_goods = top_50_goods[
+                (top_50_goods['category1'] == category1) &
+                (top_50_goods['category2'] == category2) &
+                (top_50_goods['category3'] == category3)
+            ].sort_values(by='similarity', ascending=False).head(15)
+
+            sampled_goods = filtered_goods.sample(n=min(2, len(filtered_goods)), random_state=None)
+            category_recommendations.append(sampled_goods)
+
+        # 최종 추천 목록 생성
+        all_recommendations = pd.concat(category_recommendations, ignore_index=True)
+        if len(all_recommendations) < 12:
+            remaining_goods = top_50_goods[~top_50_goods.index.isin(all_recommendations.index)]
+            additional_goods = remaining_goods.head(12 - len(all_recommendations))
+            all_recommendations = pd.concat([all_recommendations, additional_goods], ignore_index=True)
+
+        final_recommendations = all_recommendations.sort_values(by='similarity', ascending=False).head(12)
+        recommendations[f"{headline1}, {headline2}"] = final_recommendations.to_dict('records')
+
+    return recommendations
+
+# '탕비실' 상황에 대한 추천 함수
+def pantry_situation_recommendation(pantry_situation, pantry_goods):
+    random_situations = pantry_situation.sample(n=min(2, len(pantry_situation)))  # 무작위로 2개의 상황 샘플링
+    recommendations = {}
+
+    for idx, row in random_situations.iterrows():
+        headline1, headline2 = row['headline1'], row['headline2']
+        situation_keywords = ' '.join(row['situationKeyword'])
+
+        # 상품 키워드 문자열로 변환
+        pantry_goods_copy = pantry_goods.copy()
+        pantry_goods_copy['keyword_str'] = pantry_goods_copy['goodsKeyword'].apply(safe_literal_eval)
+
+        # TF-IDF 벡터화 및 유사도 계산
+        tfidf = TfidfVectorizer()
+        situation_matrix = tfidf.fit_transform([situation_keywords])
+        goods_matrix = tfidf.transform(pantry_goods_copy['keyword_str'])
+        similarity_scores = cosine_similarity(goods_matrix, situation_matrix).flatten()
+        pantry_goods_copy['similarity'] = similarity_scores
+
+        # 상위 50개 유사 상품 선택
+        top_50_goods = pantry_goods_copy.sort_values(by='similarity', ascending=False).head(50)
+
+        # 상위 카테고리 6개 선택
+        top_categories = (
+            top_50_goods.groupby(['category1', 'category2', 'category3'])
+            .size()
+            .reset_index(name='count')
+            .sort_values(by='count', ascending=False)
+            .head(6)
+        )
+
+        category_recommendations = []
+        for _, category_row in top_categories.iterrows():
+            category1, category2, category3 = category_row[['category1', 'category2', 'category3']]
+            filtered_goods = top_50_goods[
+                (top_50_goods['category1'] == category1) &
+                (top_50_goods['category2'] == category2) &
+                (top_50_goods['category3'] == category3)
+            ].sort_values(by='similarity', ascending=False).head(15)
+
+            sampled_goods = filtered_goods.sample(n=min(2, len(filtered_goods)), random_state=None)
+            category_recommendations.append(sampled_goods)
+
+        # 최종 추천 목록 생성
+        all_recommendations = pd.concat(category_recommendations, ignore_index=True)
+        if len(all_recommendations) < 12:
+            remaining_goods = top_50_goods[~top_50_goods.index.isin(all_recommendations.index)]
+            additional_goods = remaining_goods.head(12 - len(all_recommendations))
+            all_recommendations = pd.concat([all_recommendations, additional_goods], ignore_index=True)
+
+        final_recommendations = all_recommendations.sort_values(by='similarity', ascending=False).head(12)
+        recommendations[f"{headline1}, {headline2}"] = final_recommendations.to_dict('records')
+
+    return recommendations
+
+# 추천 API 함수 (상황별 추천 데이터 반환)
 def recommend(request):
-    # 각각의 추천 함수 호출
+    # 일반 상황과 '탕비실' 상황에 대해 각각 추천 수행
     situation_data = situation_recommendation(situation, goods)
     pantry_data = pantry_situation_recommendation(pantry_situation, pantry_goods)
 
-    # 각각의 추천 데이터를 형식화
+    # 추천 결과 형식화
     formatted_situation_data = format_recommendation_data(situation_data)
     formatted_pantry_data = format_recommendation_data(pantry_data)
 
-    # 결과를 하나의 JSON 구조로 합침
+    # 결과를 JSON 형태로 반환
     combined_result = {
         "situation_recommendations": formatted_situation_data,
         "pantry_recommendations": formatted_pantry_data
     }
 
-    # JSON 형태로 반환
     return JsonResponse(combined_result, safe=False)
