@@ -19,7 +19,7 @@ SECRET_KEY = 'django-insecure-4d9t^$c#jsf#ca*1l&xvo-jiw%zume&78t8ni4$#0x%-p!ot)^
 
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1']
-DEBUG = False
+DEBUG = True
 
 # Application definition
 # 자신이 설정한 app명으로 지정: pm

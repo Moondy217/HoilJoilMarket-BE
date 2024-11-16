@@ -136,8 +136,8 @@ goodsKeyword = goodsKeyword.groupby('ASIN')['goodsKeyword'].apply(list).reset_in
 goods = goods.merge(goodsKeyword, on='ASIN', how='inner')
 
 # '탕비실' 관련 데이터 필터링
-pantry_situation = situation[situation['situationCategory1'] == '탕비실']
-pantry_goods = goods[goods['category1'] == '식음료']
+pantry_situation = situation[situation['situationCategory2'] == '크리스마스']
+pantry_goods = goods
 situation = situation.drop(pantry_situation.index)
 
 # 안전한 키워드 처리 함수 (문자열을 안전하게 평가하여 변환)
